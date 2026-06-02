@@ -72,9 +72,22 @@ def get_connection():
     """Return (kind, connection-object). Postgres if available, else DuckDB."""
     pg_url = _get_pg_url()
     if pg_url:
-        from sqlalchemy import create_engine
-        engine = create_engine(pg_url, pool_pre_ping=True, pool_size=5, max_overflow=10)
-        return "postgres", engine
+       from sqlalchemy import create_engine
+# Supabase requires SSL + specific connect args
+connect_args = {
+    "sslmode": "require",
+    "connect_timeout": 10,
+}
+# Convert postgres:// to postgresql:// if needed
+url = pg_url.replace("postgres://", "postgresql://", 1)
+engine = create_engine(
+    url,
+    pool_pre_ping=True,
+    pool_size=2,
+    max_overflow=5,
+    connect_args=connect_args,
+)
+return "postgres", engine
 
     import duckdb
     con = duckdb.connect(":memory:")
