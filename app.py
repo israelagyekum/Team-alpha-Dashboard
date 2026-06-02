@@ -63,20 +63,28 @@ def get_connection():
     pg_url = _get_pg_url()
     if pg_url:
         from sqlalchemy import create_engine
+        from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
-        # Normalise scheme
-        url = pg_url.replace("postgres://", "postgresql://", 1)
+        # Normalise scheme — psycopg2 requires postgresql://, not postgres://
+        url = pg_url.strip().replace("postgres://", "postgresql://", 1)
 
-        # Supabase free tier uses a pgbouncer pooler on port 6543
-        # Direct connections (port 5432) time out from external hosts
-        if "supabase.co" in url:
-            url = url.replace(":5432/", ":6543/")
-            sep = "&" if "?" in url else "?"
-            if "pgbouncer" not in url:
-                url = url + sep + "pgbouncer=true"
+        # Strip any query parameters (like ?pgbouncer=true) from the URL
+        # psycopg2's make_dsn does not accept unknown query params
+        parsed = urlparse(url)
+        clean_url = urlunparse((
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            "", "", ""          # strip params, query, fragment
+        ))
+
+        # Supabase free tier: must use port 6543 (pgbouncer pooler)
+        # Port 5432 (direct) is blocked from external hosts on free plan
+        if "supabase.co" in clean_url:
+            clean_url = clean_url.replace(":5432/", ":6543/")
 
         engine = create_engine(
-            url,
+            clean_url,
             pool_pre_ping=True,
             pool_size=2,
             max_overflow=3,
